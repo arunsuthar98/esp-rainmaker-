@@ -1,0 +1,196 @@
+#include "RMaker.h"
+#include "WiFi.h"
+#include "WiFiProv.h"
+
+#define DEFAULT_switch_1 true
+#define DEFAULT_switch_2 true
+#define DEFAULT_switch_3 true
+#define DEFAULT_switch_4 true
+#define DEFAULT_switch_5 true
+
+static bool switch_1 = DEFAULT_switch_1;
+static bool switch_2 = DEFAULT_switch_2;
+static bool switch_3 = DEFAULT_switch_3;
+static bool switch_4 = DEFAULT_switch_4;
+static bool switch_5 = DEFAULT_switch_5;
+
+/*
+    Pins
+*/
+static int gpio_0 = 0;
+static int gpio_switch_1 = 4;
+static int gpio_switch_2 = 16;
+static int gpio_switch_3 = 3;
+static int gpio_switch_4 = 19;
+static int gpio_switch_5 = 18;
+
+/*
+   Provisioning Service Name
+*/
+const char *service_name = "PROV_123";
+const char *pop = "abcd123";
+
+/*
+   Create space for the Custom Device
+*/
+static Device battery("battery", "custom.device.battery");
+
+/*
+   Say how you want provisioning done
+*/
+
+void sysProvEvent(arduino_event_t *sys_event)
+{
+  switch (sys_event->event_id) {
+    case ARDUINO_EVENT_PROV_START:
+#if CONFIG_IDF_TARGET_ESP32S2
+      Serial.printf("\nProvisioning Started with name \"%s\" and PoP \"%s\" on SoftAP\n", service_name, pop);
+      printQR(service_name, pop, "softap");
+#else
+      Serial.printf("\nProvisioning Started with name \"%s\" and PoP \"%s\" on BLE\n", service_name, pop);
+      printQR(service_name, pop, "ble");
+#endif
+      break;
+  }
+}
+
+void write_callback(Device *device, Param *param, const param_val_t val, void *priv_data, write_ctx_t *ctx)
+{
+  const char *device_name = device->getDeviceName();
+  const char *param_name = param->getParamName();
+
+  if (strcmp(param_name, "switch_1") == 0) {
+    Serial.printf("Received value = %s for %s - %s\n", val.val.b ? "true" : "false", device_name, param_name);
+    switch_1 = val.val.b;
+    param->updateAndReport(val);
+    digitalWrite(gpio_switch_1, switch_1);
+  }
+  else if (strcmp(param_name, "switch_2") == 0) {
+    Serial.printf("Received value = %s for %s - %s\n", val.val.b ? "true" : "false", device_name, param_name);
+    switch_2 = val.val.b;
+    param->updateAndReport(val);
+    digitalWrite(gpio_switch_2, switch_2);
+  }
+  else if (strcmp(param_name, "switch_3") == 0) {
+    Serial.printf("Received value = %s for %s - %s\n", val.val.b ? "true" : "false", device_name, param_name);
+    switch_3 = val.val.b;
+    param->updateAndReport(val);
+    digitalWrite(gpio_switch_3, switch_3);
+  }
+  else if (strcmp(param_name, "switch_4") == 0) {
+    Serial.printf("Received value = %s for %s - %s\n", val.val.b ? "true" : "false", device_name, param_name);
+    switch_4 = val.val.b;
+    param->updateAndReport(val);
+    digitalWrite(gpio_switch_4, switch_4);
+  }
+  else if (strcmp(param_name, "switch_5") == 0) {
+    Serial.printf("Received value = %s for %s - %s\n", val.val.b ? "true" : "false", device_name, param_name);
+    switch_5 = val.val.b;
+    param->updateAndReport(val);
+    digitalWrite(gpio_switch_5, switch_5);
+  }
+}
+
+void setup()
+{
+  Serial.begin(115200);
+
+  pinMode(gpio_0, INPUT);
+  pinMode(gpio_switch_1, OUTPUT);
+  pinMode(gpio_switch_2, OUTPUT);
+  pinMode(gpio_switch_3, OUTPUT);
+  pinMode(gpio_switch_4, OUTPUT);
+  pinMode(gpio_switch_5, OUTPUT);
+  digitalWrite(gpio_switch_1, DEFAULT_switch_1);
+  digitalWrite(gpio_switch_2, DEFAULT_switch_2);
+  digitalWrite(gpio_switch_3, DEFAULT_switch_3);
+  digitalWrite(gpio_switch_4, DEFAULT_switch_4);
+  digitalWrite(gpio_switch_5, DEFAULT_switch_5);
+
+  /*
+     Create the Node
+  */
+  Node my_node;
+  my_node = RMaker.initNode("BMS Node");
+
+  /*
+     Now add the switches
+  */
+  Param s_1("switch_1", "custom.param.enable", value(DEFAULT_switch_1), PROP_FLAG_READ | PROP_FLAG_WRITE);
+  s_1.addUIType(ESP_RMAKER_UI_TOGGLE);
+  battery.addParam(s_1);
+
+  Param s_2("switch_2", "custom.param.enable", value(DEFAULT_switch_2), PROP_FLAG_READ | PROP_FLAG_WRITE);
+  s_2.addUIType(ESP_RMAKER_UI_TOGGLE);
+  battery.addParam(s_2);
+
+  Param s_3("switch_3", "custom.param.enable", value(DEFAULT_switch_3), PROP_FLAG_READ | PROP_FLAG_WRITE);
+  s_3.addUIType(ESP_RMAKER_UI_TOGGLE);
+  battery.addParam(s_3);
+
+  Param s_4("switch_4", "custom.param.enable", value(DEFAULT_switch_4), PROP_FLAG_READ | PROP_FLAG_WRITE);
+  s_4.addUIType(ESP_RMAKER_UI_TOGGLE);
+  battery.addParam(s_4);
+
+  Param s_5("switch_5", "custom.param.enable", value(DEFAULT_switch_5), PROP_FLAG_READ | PROP_FLAG_WRITE);
+  s_5.addUIType(ESP_RMAKER_UI_TOGGLE);
+  battery.addParam(s_5);
+
+  /*
+     Now point at the callback code so we know what to do when something happens
+  */
+  battery.addCb(write_callback);
+
+  /*
+     Add custom battery device to the node
+  */
+  my_node.addDevice(battery);
+
+  /*
+     This is optional for OTA updates
+  */
+  RMaker.enableOTA(OTA_USING_PARAMS);
+
+  /*
+     Start the Rainmaker Service
+  */
+  RMaker.enableTZService();
+
+  RMaker.enableSchedule();
+  RMaker.start();
+
+  /*
+     Provisioning via BLE or WiFI
+  */
+  WiFi.onEvent(sysProvEvent);
+#if CONFIG_IDF_TARGET_ESP32S2
+  WiFiProv.beginProvision(WIFI_PROV_SCHEME_SOFTAP, WIFI_PROV_SCHEME_HANDLER_NONE, WIFI_PROV_SECURITY_1, pop, service_name);
+#else
+  WiFiProv.beginProvision(WIFI_PROV_SCHEME_BLE, WIFI_PROV_SCHEME_HANDLER_FREE_BTDM, WIFI_PROV_SECURITY_1, pop, service_name);
+#endif
+}
+
+void loop()
+{
+  if (digitalRead(gpio_0) == LOW) { //Push button pressed
+
+    // Key debounce handling
+    delay(100);
+    int startTime = millis();
+    while (digitalRead(gpio_0) == LOW) delay(50);
+    int endTime = millis();
+
+    if ((endTime - startTime) > 10000) {
+      // If key pressed for more than 10secs, reset all
+      Serial.printf("Reset to factory.\n");
+      RMakerFactoryReset(2);
+    } else if ((endTime - startTime) > 3000) {
+      Serial.printf("Reset Wi-Fi.\n");
+      // If key pressed for more than 3secs, but less than 10, reset Wi-Fi
+      RMakerWiFiReset(2);
+    } else {
+      // Toggle device state??
+    }
+  }
+  delay(100);
+}
